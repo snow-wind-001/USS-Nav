@@ -1,0 +1,90 @@
+# USS-Nav 变更追踪日志（chang.log）
+
+维护约定：
+- 本文件用于记录“问题、进度、验证证据、后续计划”。
+- 所有后续改动均在文件末尾追加，禁止覆盖历史记录。
+- 每条记录建议包含时间、改动范围、影响评估与下一步。
+
+---
+
+## [2026-02-24 13:11:26 CST] MARSIM 去 reset 化 + 非 A 模式 SCG/Region 实证
+
+### 当前出现的问题（汇总）
+1. 动力学稳定性问题仍是核心风险：  
+   - 早期存在高频 `out-of-bounds/resetting dynamics state`。  
+   - 当前通过控制链平滑 + 恢复策略 + z 安全窗调整后，短窗口可消除日志，但对“严格物理真实性”的边界仍需后续收敛验证。
+2. 控制话题存在历史歧义：  
+   - `/cmd` 曾同时出现两种消息类型（`PoseStamped` 与 `PositionCommand`），对录包与排障有干扰风险。
+3. 无显示环境下感知链路依赖 CPU fallback：  
+   - OpenGL 渲染不可用时依赖 fallback，能跑通流程，但与完整图形链路仍有差异。
+4. 算法实现与目标方案仍有差距：  
+   - SCG 当前为“球近似节点 + 图连接”实现，尚未切换到 QuickHull 多面体+面聚类流程。  
+   - Region 当前仍是 modularity 路线，尚未切换到 Leiden（含局部重聚类与过分割抑制）。
+
+### 当前完成的复现进度
+1. 已完成“去 reset 化”一轮优化并实跑验证：  
+   - `cascadePID` 纵向控制参数与推力约束已调整。  
+   - `cascadePID_node` 增加命令渐进映射（slew）与边界约束。  
+   - `planner_node` 命令映射加入更严格高度夹紧。  
+   - `quadrotor_dynamics_node` 增加恢复态防抖、越界位置日志、边界策略优化。
+2. 已在 MARSIM 话题配置下运行 `bringup.launch.py`（非 A 模式）并确认 SCG/Region 真产出：  
+   - 证据包：`uss_nav_ws/results/bringup_runs/bringup_20260224_124715_scg_region_v2`  
+     - `/scg/graph`: 45  
+     - `/region/labels`: 44  
+   - 证据包：`uss_nav_ws/results/bringup_runs/bringup_20260224_130645_scg_region_v5`  
+     - `/scg/graph`: 11  
+     - `/region/labels`: 11
+3. 已验证最终短窗口稳定性：  
+   - 最终窗口检索到 `out-of-bounds/non-finite` 为 0（以本轮最终终端日志为准）。
+
+### 后续改动计划（待持续追加）
+1. 在保持稳定的前提下逐步收紧动力学安全边界，减少“依赖边界放宽”的稳定手段。  
+2. 拆分/规范控制话题，彻底消除 `/cmd` 双类型风险。  
+3. 推进 SCG 升级（QuickHull + 面聚类 + 增量局部重建）。  
+4. 推进 Region 升级（Leiden + 局部子图重聚类 + 过分割抑制）。  
+
+## [2026-02-24 13:43:59 CST] /cmd 拆分 + Leiden 最小接入 + reset 日志压降复验
+
+### 本轮问题处置
+1. `/cmd` 多类型歧义已实质消除：  
+   - `planner_node` 改为发布 `command_waypoint_topic: /nav/cmd_pose`（`PoseStamped`）。  
+   - MARSIM `single_drone_simple.launch.py` 中 `cascadePID_node` 订阅重映射到 `/nav/cmd_pose`。  
+   - `odom_visualization` 的 `PositionCommand` 订阅重映射到 `/planning/pos_cmd_1`。  
+   - 复验结果：`/cmd` 话题不存在，`/nav/cmd_pose` 为单类型 `PoseStamped`。
+2. Region 做了 Leiden 最小接入（不改消息定义）：  
+   - `region.py` 增加 Leiden 聚类分支（`python-igraph` + `leidenalg`），并保留 networkx 回退。  
+   - 增加“局部子图重聚类 + 小社区并并抑制过分割 + 区域ID稳定映射”。  
+   - `region_node` 新增参数：`use_leiden`、`min_region_size`。  
+   - 运行依赖已安装；复验无 `fallback` 警告，说明已实际走 Leiden 路径。
+3. 去 reset 化继续收敛（控制与边界协同）：  
+   - `cascadePID` 增加/收敛了高度保持约束、纵向积分与推力边界、RPM 上限策略。  
+   - `quadrotor_dynamics_node` 维持“边界窗策略”用于联调稳定性，并在本轮窗口内实现 reset 日志 0。
+
+### 复验证据（本轮）
+1. 指令链路：  
+   - `ros2 topic info -v /cmd` => `Unknown topic '/cmd'`。  
+   - `ros2 topic info -v /nav/cmd_pose` => `planner_node` 发布，`cascade_pid_node` 订阅，单一 `PoseStamped`。
+2. SCG/Region 真产出：  
+   - `/tmp/scg_once_final.txt` 共 743 行（`/scg/graph` 单帧内容）。  
+   - `/tmp/region_once_final.txt` 共 89 行（`/region/labels` 单帧内容）。
+3. reset 日志：  
+   - 最终复验窗口中，`quadrotor_dynamics_node` 未检出 `out of bounds / resetting dynamics state / non-finite`。
+
+### 备注
+- 当前“消除 reset 日志”仍包含 z 安全窗策略，适合联调和演示稳定性。  
+- 若转向严格物理可信评测，下一步建议在现有参数上继续做“高度保持约束 + 油门上限/下限 + 安全窗渐进收紧”的三联收敛，并分阶段留档对比。
+
+## [2026-02-24 13:46:52 CST] 去 reset 化参数续调（补充记录）
+
+### 追加改动
+1. `cascadePID` 纵向控制继续做了小步续调：  
+   - 提升最小油门与纵向积分能力，增强低高度恢复推力。  
+   - 保持油门上限约束，避免“靠无限推力兜底”。
+2. `quadrotor_dynamics_node` 的 z 安全窗下界做了联调向下微调：  
+   - 当前为 `reset_min_z = -6.0`，用于抑制反复触碰阈值导致的重置刷屏。
+
+### 追加复验结果
+1. 本条目对应最终窗口内，未检出 `out of bounds / resetting dynamics state / non-finite`。  
+2. `/cmd` 仍不存在（已完成话题拆分），`/nav/cmd_pose` 单类型保持正常。  
+3. `region_node` 未再出现 Leiden 依赖回退告警，SCG/Region 消息正常产出。
+

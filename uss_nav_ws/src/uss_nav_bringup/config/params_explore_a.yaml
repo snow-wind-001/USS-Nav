@@ -1,0 +1,85 @@
+rolling_grid_node:
+  ros__parameters:
+    size_xyz: [8.0, 8.0, 4.0]
+    resolution: 0.1
+    publish_hz: 10.0
+    frame_id: map
+    pose_topic: ""
+    pose_topic_type: pose_stamped
+    points_topic: ""
+    use_external_points: true
+    use_synthetic_fallback: true
+    assume_points_already_in_frame: true
+    points_timeout_sec: 1.0
+    max_point_samples: 20000
+    drop_z_below: -10.0
+    drop_z_above: 10.0
+    simulate_motion: true
+    motion_radius: 1.5
+    free_radius: 1.2
+    synthetic_obstacle_count: 90
+    synthetic_seed: 7
+
+gcm_node:
+  ros__parameters:
+    cell_size: 1.0
+    visited_unknown_threshold: 50
+    publish_markers: true
+    marker_topic: /viz/gcm
+    show_unvisited: false
+    max_markers: 250
+    marker_publish_stride: 5
+
+frontier_node:
+  ros__parameters:
+    min_cluster_size: 5
+    cluster_eps: 0.5
+    info_gain_radius: 1.0
+    publish_markers: true
+    marker_topic: /viz/frontiers
+    point_scale: 0.15
+
+planner_node:
+  ros__parameters:
+    explore_only: true
+    stop_on_done: true
+    target_label: chair
+    alpha: 1.0
+    beta: 0.5
+    publish_markers: true
+    marker_topic: /viz/waypoint
+
+exploration_monitor_node:
+  ros__parameters:
+    publish_hz: 1.0
+    min_runtime_sec: 20.0
+    min_coverage_ratio: 0.82
+    frontier_threshold: 2
+    no_frontier_hold_sec: 8.0
+    plateau_window_sec: 12.0
+    coverage_plateau_delta: 0.01
+    frontier_plateau_delta: 1.0
+    stop_on_target_found: true
+    publish_markers: true
+    marker_topic: /viz/explore_status
+
+vlm_search_node:
+  ros__parameters:
+    enabled: false
+    vllm_base_url: http://127.0.0.1:8001
+    model_name: Qwen2-VL-2B-Instruct
+    target_text: chair
+    confidence_threshold: 0.72
+    request_interval_sec: 2.0
+    request_timeout_sec: 25.0
+    max_tokens: 256
+    temperature: 0.1
+    image_topic: /camera/image/compressed
+    image_is_compressed: true
+    target_query_topic: /nav/target_query
+    publish_markers: true
+    marker_topic: /viz/vlm_status
+    result_topic: /vlm/search_result
+    target_found_topic: /nav/target_found
+    done_topic: /nav/explore_done
+    publish_done_on_found: false

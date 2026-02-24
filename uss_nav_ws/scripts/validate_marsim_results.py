@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+from typing import Dict, List
+
+
+def _to_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _to_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _to_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in {"true", "1", "yes", "y"}:
+            return True
+        if v in {"false", "0", "no", "n"}:
+            return False
+    return default
+
+
+def _read_metrics_csv(csv_path: Path) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+    with csv_path.open("r", encoding="utf-8") as fp:
+        reader = csv.DictReader(fp)
+        for row in reader:
+            rows.append(
+                {
+                    "elapsed_sec": _to_float(row.get("elapsed_sec", 0.0)),
+                    "coverage_ratio": _to_float(row.get("coverage_ratio", 0.0)),
+                    "frontier_count": _to_int(row.get("frontier_count", 0)),
+                    "done": _to_bool(row.get("done", False)),
+                    "done_reason": str(row.get("done_reason", "")),
+                }
+            )
+    return rows
+
+
+def _count_bag_topics(bag_dir: Path, interested_topics: List[str]) -> Dict[str, int]:
+    import rosbag2_py
+
+    storage_options = rosbag2_py.StorageOptions(uri=str(bag_dir), storage_id="sqlite3")
+    converter_options = rosbag2_py.ConverterOptions(
+        input_serialization_format="cdr",
+        output_serialization_format="cdr",
+    )
+    reader = rosbag2_py.SequentialReader()
+    reader.open(storage_options, converter_options)
+
+    counts = {topic: 0 for topic in interested_topics}
+    while reader.has_next():
+        topic_name, _, _ = reader.read_next()
+        if topic_name in counts:
+            counts[topic_name] += 1
+    return counts
+
+
+def _write_markdown(report: Dict[str, object], markdown_path: Path) -> None:
+    checks = report["checks"]
+    observed = report["observed"]
+    thresholds = report["thresholds"]
+
+    def _ok(flag: bool) -> str:
+        return "PASS" if flag else "FAIL"
+
+    lines = [
+        "# MARSIM Validation Report",
+        "",
+        f"- overall: **{_ok(bool(report['overall_pass']))}**",
+        f"- mapping: **{_ok(bool(report['mapping_pass']))}**",
+        f"- algorithm: **{_ok(bool(report['algorithm_pass']))}**",
+        "",
+        "## Observed",
+        f"- coverage_start: {observed['coverage_start']:.6f}",
+        f"- coverage_final: {observed['coverage_final']:.6f}",
+        f"- coverage_gain: {observed['coverage_gain']:.6f}",
+        f"- frontier_peak: {observed['frontier_peak']}",
+        f"- waypoint_msgs: {observed['waypoint_msgs']}",
+        f"- rolling_grid_msgs: {observed['rolling_grid_msgs']}",
+        f"- occupied_voxels: {observed['occupied_voxels']}",
+        f"- topdown_occupied_ratio: {observed['topdown_occupied_ratio']:.6f}",
+        "",
+        "## Thresholds",
+        f"- min_coverage_gain: {thresholds['min_coverage_gain']:.6f}",
+        f"- min_final_coverage: {thresholds['min_final_coverage']:.6f}",
+        f"- min_frontier_peak: {thresholds['min_frontier_peak']}",
+        f"- min_waypoint_msgs: {thresholds['min_waypoint_msgs']}",
+        f"- min_rolling_grid_msgs: {thresholds['min_rolling_grid_msgs']}",
+        f"- min_occupied_voxels: {thresholds['min_occupied_voxels']}",
+        f"- min_topdown_occupied_ratio: {thresholds['min_topdown_occupied_ratio']:.6f}",
+        "",
+        "## Check Items",
+        f"- mapping_has_grid_msgs: {_ok(bool(checks['mapping_has_grid_msgs']))}",
+        f"- mapping_has_occupied: {_ok(bool(checks['mapping_has_occupied']))}",
+        f"- mapping_has_terrain_summary: {_ok(bool(checks['mapping_has_terrain_summary']))}",
+        f"- algorithm_has_metrics_msgs: {_ok(bool(checks['algorithm_has_metrics_msgs']))}",
+        f"- algorithm_has_waypoint_msgs: {_ok(bool(checks['algorithm_has_waypoint_msgs']))}",
+        f"- algorithm_frontier_peak_ok: {_ok(bool(checks['algorithm_frontier_peak_ok']))}",
+        f"- algorithm_coverage_gain_ok: {_ok(bool(checks['algorithm_coverage_gain_ok']))}",
+        f"- algorithm_final_coverage_ok: {_ok(bool(checks['algorithm_final_coverage_ok']))}",
+        "",
+        "## Suggestion",
+        "- 通过后可进入语义目标搜索评估；未通过请优先检查 MARSIM 点云频率、frame 对齐与阈值设置。",
+    ]
+    markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Validate MARSIM-based mapping and algorithm capabilities from one run."
+    )
+    parser.add_argument("--run-dir", required=True, help="Run directory generated by record script.")
+    parser.add_argument("--eval-dir", default="", help="Override eval directory.")
+    parser.add_argument("--bag-dir", default="", help="Override bag directory.")
+    parser.add_argument("--min-coverage-gain", type=float, default=0.03)
+    parser.add_argument("--min-final-coverage", type=float, default=0.10)
+    parser.add_argument("--min-frontier-peak", type=int, default=20)
+    parser.add_argument("--min-waypoint-msgs", type=int, default=10)
+    parser.add_argument("--min-rolling-grid-msgs", type=int, default=20)
+    parser.add_argument("--min-occupied-voxels", type=int, default=10)
+    parser.add_argument("--min-topdown-occupied-ratio", type=float, default=0.001)
+    args = parser.parse_args()
+
+    run_dir = Path(args.run_dir).expanduser().resolve()
+    if not run_dir.exists():
+        raise FileNotFoundError(f"run directory not found: {run_dir}")
+    eval_dir = (
+        Path(args.eval_dir).expanduser().resolve() if args.eval_dir else (run_dir / "eval")
+    )
+    bag_dir = Path(args.bag_dir).expanduser().resolve() if args.bag_dir else (run_dir / "bag")
+
+    metrics_csv = eval_dir / "explore_metrics_curve.csv"
+    terrain_summary_path = eval_dir / "explore_terrain_summary.json"
+    if not metrics_csv.exists():
+        raise FileNotFoundError(f"metrics csv missing: {metrics_csv}")
+    if not bag_dir.exists():
+        raise FileNotFoundError(f"bag directory missing: {bag_dir}")
+
+    rows = _read_metrics_csv(metrics_csv)
+    if not rows:
+        raise RuntimeError("metrics csv has no rows")
+
+    coverage_start = float(rows[0]["coverage_ratio"])
+    coverage_final = float(rows[-1]["coverage_ratio"])
+    coverage_gain = coverage_final - coverage_start
+    frontier_peak = max(int(row["frontier_count"]) for row in rows)
+    done = bool(rows[-1]["done"])
+    done_reason = str(rows[-1]["done_reason"])
+
+    terrain_summary: Dict[str, object] = {}
+    if terrain_summary_path.exists():
+        terrain_summary = json.loads(terrain_summary_path.read_text(encoding="utf-8"))
+    occupied_voxels = _to_int(terrain_summary.get("occupied_voxels", 0), 0)
+    topdown_occupied_ratio = _to_float(terrain_summary.get("topdown_occupied_ratio", 0.0), 0.0)
+
+    counts = _count_bag_topics(
+        bag_dir=bag_dir,
+        interested_topics=[
+            "/map/rolling_grid",
+            "/nav/frontiers",
+            "/nav/waypoint",
+            "/nav/explore_metrics",
+            "/nav/explore_done",
+        ],
+    )
+    rolling_grid_msgs = int(counts.get("/map/rolling_grid", 0))
+    waypoint_msgs = int(counts.get("/nav/waypoint", 0))
+    metrics_msgs = int(counts.get("/nav/explore_metrics", 0))
+
+    checks = {
+        "mapping_has_grid_msgs": rolling_grid_msgs >= int(args.min_rolling_grid_msgs),
+        "mapping_has_terrain_summary": bool(terrain_summary),
+        "mapping_has_occupied": (
+            occupied_voxels >= int(args.min_occupied_voxels)
+            or topdown_occupied_ratio >= float(args.min_topdown_occupied_ratio)
+        ),
+        "algorithm_has_metrics_msgs": metrics_msgs > 0,
+        "algorithm_has_waypoint_msgs": waypoint_msgs >= int(args.min_waypoint_msgs),
+        "algorithm_frontier_peak_ok": frontier_peak >= int(args.min_frontier_peak),
+        "algorithm_coverage_gain_ok": coverage_gain >= float(args.min_coverage_gain),
+        "algorithm_final_coverage_ok": coverage_final >= float(args.min_final_coverage),
+    }
+    mapping_pass = bool(
+        checks["mapping_has_grid_msgs"]
+        and checks["mapping_has_terrain_summary"]
+        and checks["mapping_has_occupied"]
+    )
+    algorithm_pass = bool(
+        checks["algorithm_has_metrics_msgs"]
+        and checks["algorithm_has_waypoint_msgs"]
+        and checks["algorithm_frontier_peak_ok"]
+        and checks["algorithm_coverage_gain_ok"]
+        and checks["algorithm_final_coverage_ok"]
+    )
+    overall_pass = bool(mapping_pass and algorithm_pass)
+
+    report = {
+        "run_dir": str(run_dir),
+        "eval_dir": str(eval_dir),
+        "bag_dir": str(bag_dir),
+        "overall_pass": overall_pass,
+        "mapping_pass": mapping_pass,
+        "algorithm_pass": algorithm_pass,
+        "thresholds": {
+            "min_coverage_gain": float(args.min_coverage_gain),
+            "min_final_coverage": float(args.min_final_coverage),
+            "min_frontier_peak": int(args.min_frontier_peak),
+            "min_waypoint_msgs": int(args.min_waypoint_msgs),
+            "min_rolling_grid_msgs": int(args.min_rolling_grid_msgs),
+            "min_occupied_voxels": int(args.min_occupied_voxels),
+            "min_topdown_occupied_ratio": float(args.min_topdown_occupied_ratio),
+        },
+        "observed": {
+            "coverage_start": coverage_start,
+            "coverage_final": coverage_final,
+            "coverage_gain": coverage_gain,
+            "frontier_peak": frontier_peak,
+            "done": done,
+            "done_reason": done_reason,
+            "rolling_grid_msgs": rolling_grid_msgs,
+            "waypoint_msgs": waypoint_msgs,
+            "metrics_msgs": metrics_msgs,
+            "occupied_voxels": occupied_voxels,
+            "topdown_occupied_ratio": topdown_occupied_ratio,
+        },
+        "checks": checks,
+    }
+
+    report_json = eval_dir / "marsim_validation_report.json"
+    report_md = eval_dir / "marsim_validation_report.md"
+    report_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_markdown(report, report_md)
+
+    print(f"[ok] validation_json: {report_json}")
+    print(f"[ok] validation_markdown: {report_md}")
+    print(
+        f"[ok] validation_result: overall={overall_pass}, "
+        f"mapping={mapping_pass}, algorithm={algorithm_pass}"
+    )
+
+    if not overall_pass:
+        raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    main()

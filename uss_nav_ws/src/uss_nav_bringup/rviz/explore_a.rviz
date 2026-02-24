@@ -1,0 +1,61 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 1
+      Plane Cell Count: 30
+      Color: 160; 160; 164
+      Alpha: 0.4
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: GCM Markers
+      Namespaces:
+        {}
+      Topic:
+        Value: /viz/gcm
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Frontier Markers
+      Namespaces:
+        {}
+      Topic:
+        Value: /viz/frontiers
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Waypoint Marker
+      Namespaces:
+        {}
+      Topic:
+        Value: /viz/waypoint
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Explore Status
+      Namespaces:
+        {}
+      Topic:
+        Value: /viz/explore_status
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: VLM Status
+      Namespaces:
+        {}
+      Topic:
+        Value: /viz/vlm_status
+  Enabled: true
+  Global Options:
+    Fixed Frame: map
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+  Value: true
+Window Geometry:
+  Height: 960
+  Width: 1600

@@ -1,0 +1,99 @@
+rolling_grid_node:
+  ros__parameters:
+    size_xyz: [8.0, 8.0, 4.0]
+    resolution: 0.1
+    publish_hz: 10.0
+    frame_id: map
+    # 按你的 MARSIM topic 实际命名修改
+    pose_topic: /odom
+    pose_topic_type: odometry
+    points_topic: /points
+    use_external_points: true
+    use_synthetic_fallback: false
+    assume_points_already_in_frame: true
+    points_timeout_sec: 2.0
+    max_point_samples: 8000
+    drop_z_below: -3.0
+    drop_z_above: 5.0
+    simulate_motion: false
+    motion_radius: 2.0
+    free_radius: 2.2
+    enable_free_raycarving: true
+    free_ray_step: 0.25
+    max_free_ray_samples: 800
+    free_raycarving_stride: 4
+    synthetic_obstacle_count: 90
+    synthetic_seed: 7
+
+gcm_node:
+  ros__parameters:
+    cell_size: 1.0
+    visited_unknown_threshold: 160
+    publish_markers: true
+    marker_topic: /viz/gcm
+    show_unvisited: false
+    max_markers: 250
+    marker_publish_stride: 5
+
+frontier_node:
+  ros__parameters:
+    min_cluster_size: 5
+    cluster_eps: 0.5
+    info_gain_radius: 1.0
+    publish_markers: true
+    marker_topic: /viz/frontiers
+    point_scale: 0.15
+
+planner_node:
+  ros__parameters:
+    explore_only: true
+    stop_on_done: true
+    target_label: chair
+    alpha: 1.0
+    beta: 0.5
+    command_waypoint_topic: /nav/cmd_pose
+    command_waypoint_frame_id: world
+    command_waypoint_max_step_xy: 0.8
+    command_waypoint_max_step_z: 0.1
+    command_waypoint_min_z: 1.0
+    command_waypoint_max_z: 1.8
+    command_waypoint_abs_xy_limit: 30.0
+    publish_markers: true
+    marker_topic: /viz/waypoint
+
+exploration_monitor_node:
+  ros__parameters:
+    publish_hz: 1.0
+    min_runtime_sec: 20.0
+    min_coverage_ratio: 0.82
+    frontier_threshold: 2
+    no_frontier_hold_sec: 8.0
+    plateau_window_sec: 12.0
+    coverage_plateau_delta: 0.01
+    frontier_plateau_delta: 1.0
+    stop_on_target_found: false
+    publish_markers: true
+    marker_topic: /viz/explore_status
+
+vlm_search_node:
+  ros__parameters:
+    enabled: false
+    vllm_base_url: http://127.0.0.1:8001
+    model_name: Qwen2-VL-2B-Instruct
+    target_text: chair
+    confidence_threshold: 0.72
+    request_interval_sec: 2.0
+    request_timeout_sec: 25.0
+    max_tokens: 256
+    temperature: 0.1
+    # 如果你有压缩图像，改成 /camera/image/compressed + true
+    image_topic: /camera/image/compressed
+    image_is_compressed: true
+    target_query_topic: /nav/target_query
+    publish_markers: true
+    marker_topic: /viz/vlm_status
+    result_topic: /vlm/search_result
+    target_found_topic: /nav/target_found
+    done_topic: /nav/explore_done
+    publish_done_on_found: false
+    assist_enabled: false

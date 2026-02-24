@@ -1,0 +1,51 @@
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# ROS2 / colcon generated
+log/
+install/
+**/build/
+**/install/
+**/log/
+
+# Runtime outputs
+uss_nav_ws/results/
+
+# Model and large binary checkpoints
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.safetensors
+
+# Datasets and media (usually large)
+*.bag
+*.db3
+*.mp4
+*.avi
+*.mkv
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Large documents (paper PDF / HTML export)
+*.pdf
