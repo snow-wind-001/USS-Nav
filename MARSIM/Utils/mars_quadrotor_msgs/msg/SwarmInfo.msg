@@ -1,0 +1,2 @@
+quadrotor_msgs/TrajectoryMatrix path
+builtin_interfaces/Time start

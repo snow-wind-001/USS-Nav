@@ -49,3 +49,10 @@ uss_nav_ws/results/
 
 # HTML export of paper
 USS-Nav.html
+
+# MARSIM build artifacts
+MARSIM/build/
+MARSIM/install/
+MARSIM/log/
+**/cmake-build-debug/
+**/bin/*.bin
