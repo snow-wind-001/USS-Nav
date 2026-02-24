@@ -47,5 +47,5 @@ uss_nav_ws/results/
 *.tar.gz
 *.7z
 
-# Large documents (paper PDF / HTML export)
-*.pdf
+# HTML export of paper
+USS-Nav.html
