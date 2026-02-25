@@ -232,6 +232,9 @@ class PlannerNode(Node):
             target_region = choose_target_region(context)
             target_msg.data = int(target_region)
             selected = context.frontiers_by_region.get(target_region, [])
+            if not selected:
+                # Fallback for datasets where frontier region_id is unset (e.g. -1).
+                selected = all_frontiers
         self.target_pub.publish(target_msg)
 
         ordered = order_frontiers_tsp_like(selected, self.current_position, self.config)

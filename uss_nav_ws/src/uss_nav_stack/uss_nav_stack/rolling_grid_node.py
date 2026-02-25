@@ -113,28 +113,24 @@ class RollingGridNode(Node):
         try:
             total_points_hint = max(1, int(msg.width) * int(msg.height))
             sample_stride = max(1, total_points_hint // max(1, self.max_point_samples))
-            raw_points = point_cloud2.read_points(
-                msg,
-                field_names=("x", "y", "z"),
-                skip_nans=True,
-            )
-            if isinstance(raw_points, np.ndarray):
-                if raw_points.dtype.names:
-                    xs = raw_points["x"]
-                    ys = raw_points["y"]
-                    zs = raw_points["z"]
-                    if sample_stride > 1:
-                        xs = xs[::sample_stride]
-                        ys = ys[::sample_stride]
-                        zs = zs[::sample_stride]
-                    points = np.column_stack(
-                        [xs, ys, zs]
-                    ).astype(np.float32, copy=False)
-                else:
-                    points = np.asarray(raw_points, dtype=np.float32)
-                    if sample_stride > 1:
-                        points = points[::sample_stride]
+            # Fast path: available in Humble and significantly cheaper for large clouds.
+            if hasattr(point_cloud2, "read_points_numpy"):
+                points = point_cloud2.read_points_numpy(
+                    msg,
+                    field_names=["x", "y", "z"],
+                    skip_nans=True,
+                )
+                points = np.asarray(points, dtype=np.float32)
+                if points.ndim == 1 and points.size % 3 == 0:
+                    points = points.reshape((-1, 3))
+                if sample_stride > 1 and len(points) > 0:
+                    points = points[::sample_stride]
             else:
+                raw_points = point_cloud2.read_points(
+                    msg,
+                    field_names=("x", "y", "z"),
+                    skip_nans=True,
+                )
                 sampled_points = []
                 for i, p in enumerate(raw_points):
                     if sample_stride > 1 and (i % sample_stride) != 0:

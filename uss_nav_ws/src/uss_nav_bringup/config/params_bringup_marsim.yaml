@@ -3,17 +3,17 @@ rolling_grid_node:
     size_xyz: [8.0, 8.0, 4.0]
     resolution: 0.1
     publish_hz: 10.0
-    frame_id: map
+    frame_id: world
     pose_topic: /odom
     pose_topic_type: odometry
     points_topic: /points
     use_external_points: true
     use_synthetic_fallback: false
     assume_points_already_in_frame: true
-    points_timeout_sec: 2.0
-    max_point_samples: 8000
+    points_timeout_sec: 4.0
+    max_point_samples: 4000
     drop_z_below: -3.0
-    drop_z_above: 5.0
+    drop_z_above: 8.0
     simulate_motion: false
     motion_radius: 2.0
     free_radius: 2.2
@@ -76,11 +76,11 @@ planner_node:
     beta: 0.5
     command_waypoint_topic: /nav/cmd_pose
     command_waypoint_frame_id: world
-    command_waypoint_max_step_xy: 0.8
-    command_waypoint_max_step_z: 0.1
-    command_waypoint_min_z: 1.0
-    command_waypoint_max_z: 1.8
-    command_waypoint_abs_xy_limit: 20.0
+    command_waypoint_max_step_xy: 0.6
+    command_waypoint_max_step_z: 0.08
+    command_waypoint_min_z: 1.1
+    command_waypoint_max_z: 1.6
+    command_waypoint_abs_xy_limit: 18.0
     publish_markers: true
     marker_topic: /viz/waypoint
 
